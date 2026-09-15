@@ -1,0 +1,20 @@
+(() => {
+  'use strict';
+
+  const memCache = new Map();
+  let lastNetworkRequestAt = 0, requestChain = Promise.resolve();
+  const KEY = CFPR.CONSTANTS.CONTEST_RATING_CACHE_KEY;
+  const sleep = ms => new Promise(r => setTimeout(r,ms));
+  async function waitForRateLimit(){const run=requestChain.then(async()=>{const w=2050-(Date.now()-lastNetworkRequestAt);if(w>0)await sleep(w);lastNetworkRequestAt=Date.now()});requestChain=run.catch(()=>{});return run}
+  async function request(method,params={},options={}){const url=new URL('/api/'+method,location.origin);for(const[k,v]of Object.entries(params))if(v!==undefined&&v!==null&&v!=='')url.searchParams.set(k,v);const key=url.toString(),ttl=options.ttl??CFPR.CONSTANTS.STANDINGS_CACHE_MS;if(!options.noCache){const c=memCache.get(key);if(c&&Date.now()-c.time<ttl)return c.data}await waitForRateLimit();const res=await fetch(url,{credentials:'include'});if(!res.ok)throw Error('Codeforces HTTP '+res.status);const json=await res.json();if(json.status!=='OK')throw Error(json.comment||'Codeforces API request failed');memCache.set(key,{time:Date.now(),data:json.result});return json.result}
+  function getContestStandings(id,o={}){return request('contest.standings',{contestId:id},{noCache:!!o.force,ttl:CFPR.CONSTANTS.STANDINGS_CACHE_MS})}
+  function getRatingChanges(id,o={}){return request('contest.ratingChanges',{contestId:id},{noCache:!!o.force,ttl:86400000})}
+  function getContestSubmissions(id,handle,o={}){return request('contest.status',{contestId:id,handle,from:1,count:o.count||1000},{noCache:!!o.force,ttl:CFPR.CONSTANTS.VIRTUAL_SUBMISSION_CACHE_MS})}
+  function getUserRatingHistory(handle,o={}){return request('user.rating',{handle},{noCache:!!o.force,ttl:86400000})}
+  function splitHandleBatches(handles){const out=[];let b=[],chars=0;for(const h of handles){const e=h.length+(b.length?1:0);if(b.length&&chars+e>7200){out.push(b);b=[];chars=0}b.push(h);chars+=e}if(b.length)out.push(b);return out}
+  async function getUserInfoBatched(handles,onProgress){const unique=[...new Set(handles.map(String).filter(Boolean))],result=new Map(),batches=splitHandleBatches(unique);for(let i=0;i<batches.length;i++){const users=await request('user.info',{handles:batches[i].join(';'),checkHistoricHandles:false},{noCache:true});for(const u of users)if(u?.handle)result.set(u.handle,Number.isFinite(u.rating)?Number(u.rating):null);onProgress?.(i+1,batches.length,result.size,unique.length)}return result}
+  async function loadContestRatingCache(id){const data=await chrome.storage.local.get(KEY),all=data[KEY]||{},e=all[String(id)];if(!e?.fetchedAt||!e.ratings)return null;if(Date.now()-e.fetchedAt>CFPR.CONSTANTS.RATING_CACHE_DAYS*86400000)return null;return e.ratings}
+  async function saveContestRatingCache(id,ratings){const data=await chrome.storage.local.get(KEY),all=data[KEY]||{};all[String(id)]={fetchedAt:Date.now(),ratings};const entries=Object.entries(all).sort((a,b)=>(b[1]?.fetchedAt||0)-(a[1]?.fetchedAt||0)).slice(0,12);await chrome.storage.local.set({[KEY]:Object.fromEntries(entries)})}
+  async function getContestRatings(id,handles,onProgress){const needed=[...new Set(handles)],cached=await loadContestRatingCache(id);if(cached){const map=new Map(Object.entries(cached)),missing=needed.filter(h=>!map.has(h));if(!missing.length){onProgress?.(1,1,map.size,needed.length,true);return map}const fetched=await getUserInfoBatched(missing,onProgress);for(const[h,r]of fetched)map.set(h,r);await saveContestRatingCache(id,Object.fromEntries(map));return map}const fetched=await getUserInfoBatched(needed,onProgress);await saveContestRatingCache(id,Object.fromEntries(fetched));return fetched}
+  CFPR.API={getContestStandings,getRatingChanges,getContestSubmissions,getUserRatingHistory,getContestRatings,getUserInfoBatched,splitHandleBatches,clear:()=>memCache.clear()};
+})();
