@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Codeforces Rating Predictor",
+  "version": "4.0.0",
+  "description": "Fast Codeforces rating predictions for live contests, virtual participation, and official final deltas.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://codeforces.com/*","https://*.codeforces.com/*"],
+  "action": {"default_title":"Codeforces Rating Predictor","default_popup":"popup.html"},
+  "content_scripts": [{
+    "matches":["https://codeforces.com/contest/*/standings*","https://codeforces.com/contest/*/virtual*","https://*.codeforces.com/contest/*/standings*","https://*.codeforces.com/contest/*/virtual*"],
+    "js":["src/constants.js","src/fft.js","src/rating.js","src/codeforcesApi.js","src/dom.js","src/content.js"],
+    "css":["src/content.css"],
+    "run_at":"document_idle"
+  }]
+}
