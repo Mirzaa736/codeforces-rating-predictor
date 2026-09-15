@@ -1,0 +1,1 @@
+# Validation notes\n\nThe predictor is deterministic for a given participant list. Compare predicted deltas against official `contest.ratingChanges` values on archived contests.\n\nRecommended metrics: MAE, median absolute error, and percentage within ±5/±10/±20.\n
